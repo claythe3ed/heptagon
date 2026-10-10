@@ -24,6 +24,9 @@ dev = [
     "pytest-cov>=6.0",
 ]
 
+[project.scripts]
+heptagon = "heptagon.cli.main:main"
+
 [project.urls]
 Homepage = "https://github.com/claythe3ed/heptagon"
 Repository = "https://github.com/claythe3ed/heptagon"
