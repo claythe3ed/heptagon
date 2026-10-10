@@ -41,8 +41,24 @@ def test_sheaf_flabby():
 
 def test_recording_injective():
     deeds = np.eye(4)
-    records = np.eye(4)
-    assert MoralSheaf.recording_map_is_injective(deeds, records) is True
+    assert MoralSheaf.recording_map_is_injective(deeds) is True
+
+
+def test_recording_not_injective_when_rank_deficient():
+    """A rank-deficient matrix -> not injective."""
+    deeds = np.array([
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [1.0, 1.0, 0.0],
+    ])
+    assert MoralSheaf.recording_map_is_injective(deeds) is False
+
+
+def test_recording_rejects_1d_input():
+    """A 1D array is not a map; must raise ValueError."""
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="must be 2D"):
+        MoralSheaf.recording_map_is_injective(np.array([1.0, 2.0, 3.0]))
 
 
 def test_lineage_ancestor():

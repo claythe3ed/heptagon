@@ -128,19 +128,37 @@ class MoralSheaf:
         return True
 
     @staticmethod
+    @staticmethod
     def recording_map_is_injective(
         deeds: np.ndarray,
-        records: np.ndarray,
         tol: Optional[float] = None,
     ) -> bool:
-        if deeds.ndim == 1:
-            M = np.column_stack([deeds, records])
-        else:
-            M = deeds
-        rank = int(np.linalg.matrix_rank(M, tol=tol))
-        return bool(rank == M.shape[1])
+        """
+        A linear recording map rho: x -> M x is injective iff its
+        matrix M has full column rank (trivial kernel).
 
+        Parameters
+        ----------
+        deeds : np.ndarray
+            A 2D matrix of shape (m, n) representing the linear map
+            from an n-dimensional history space to an m-dimensional
+            record space. 1D input is rejected: a single vector is
+            not a map.
+        tol : float, optional
+            Tolerance forwarded to numpy.linalg.matrix_rank.
 
+        Returns
+        -------
+        bool
+            True iff rank(deeds) == deeds.shape[1].
+        """
+        arr = np.asarray(deeds)
+        if arr.ndim != 2:
+            raise ValueError(
+                f"deeds must be 2D, got shape {arr.shape}"
+            )
+        rank = int(np.linalg.matrix_rank(arr, tol=tol))
+        return bool(rank == arr.shape[1])
 # ---------------------------------------------------------------------------
 # 3. The lineage as a poset with a maximal chain
 # ---------------------------------------------------------------------------
@@ -581,10 +599,9 @@ def demo(seed: int = 7, verbose: bool = True) -> Dict:
     if verbose:
         print(f"[2] sheaf flabby? {sheaf.is_flabby()}")
     deeds = rng.normal(size=(4, 3))
-    records = rng.normal(size=(4, 3))
     if verbose:
         print(f"    recording map injective? "
-              f"{MoralSheaf.recording_map_is_injective(deeds, records)}")
+              f"{MoralSheaf.recording_map_is_injective(deeds)}")
 
     lineage = Lineage(labels=[f"agent_{i:02d}" for i in range(1, 11)])
     if verbose:
