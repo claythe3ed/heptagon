@@ -89,3 +89,51 @@ def test_break_glass_passes_when_marked_and_evidenced():
     c.log_decision(d)
     result = c.check_break_glass_logged()
     assert result["ok"] is True
+
+
+
+def test_teams_complete_fails_when_empty():
+    """A CIRP with no teams must fail — all 5 roles are missing."""
+    c = CIRPModel(name="empty")
+    result = c.check_teams_complete()
+    assert result["ok"] is False
+    assert len(result["missing_roles"]) == 5
+    assert result["missing_roles"] == [
+        "crisis_mgmt", "cyber_mgmt", "product_owner", "response", "third_party"
+    ]
+
+
+def test_teams_complete_fails_when_one_role_missing():
+    """Missing any of the 5 R-C-C-P-T roles must fail the check."""
+    c = CIRPModel(name="partial")
+    c.add_team(Team("response", ["a"], "+1", "+2", "fix"))
+    c.add_team(Team("cyber_mgmt", ["b"], "+1", "+2", "supervise"))
+    c.add_team(Team("crisis_mgmt", ["c"], "+1", "+2", "handle"))
+    c.add_team(Team("product_owner", ["d"], "+1", "+2", "own"))
+    # third_party deliberately missing
+    result = c.check_teams_complete()
+    assert result["ok"] is False
+    assert result["missing_roles"] == ["third_party"]
+
+
+def test_teams_complete_fails_when_present_team_is_incomplete():
+    """A present team missing a field must fail the check."""
+    c = CIRPModel(name="incomplete")
+    c.add_team(Team("response", ["a"], "+1", "+2", "fix"))
+    c.add_team(Team("cyber_mgmt", ["b"], "+1", "+2", "supervise"))
+    c.add_team(Team("crisis_mgmt", ["c"], "+1", "+2", "handle"))
+    c.add_team(Team("product_owner", ["d"], "+1", "+2", "own"))
+    # third_party present but no backup contact
+    c.add_team(Team("third_party", ["e"], "+1", "", "help"))
+    result = c.check_teams_complete()
+    assert result["ok"] is False
+    assert "third_party" in result["incomplete_teams"]
+
+
+def test_teams_complete_passes_when_all_5_present_and_complete():
+    """All 5 roles present and complete must pass."""
+    c = _make_complete_cirp()
+    result = c.check_teams_complete()
+    assert result["ok"] is True
+    assert result["missing_roles"] == []
+    assert result["incomplete_teams"] == []

@@ -191,15 +191,27 @@ class CIRPModel:
     # ------------------------------------------------------------------
 
     def check_teams_complete(self) -> Dict:
+        """
+        Verify that all five R-C-C-P-T roles are present AND that
+        every present team is complete (members, contact, backup,
+        mandate).
+
+        A CIRP missing any of the five roles fails this check, even
+        if every present team is otherwise complete.
+        """
+        expected = {
+            "response", "cyber_mgmt", "crisis_mgmt",
+            "product_owner", "third_party",
+        }
+        present = {t.role for t in self.teams}
+        missing_roles = sorted(expected - present)
         incomplete = [t.role for t in self.teams if not t.is_complete()]
         return {
-            "ok": len(incomplete) == 0,
+            "ok": len(missing_roles) == 0 and len(incomplete) == 0,
+            "missing_roles": missing_roles,
             "incomplete_teams": incomplete,
-            "expected_roles": [
-                "response", "cyber_mgmt", "crisis_mgmt",
-                "product_owner", "third_party",
-            ],
-            "present_roles": [t.role for t in self.teams],
+            "expected_roles": sorted(expected),
+            "present_roles": sorted(present),
         }
 
     def check_reporting_chain(self) -> Dict:
