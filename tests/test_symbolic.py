@@ -160,3 +160,60 @@ def test_pipeline_requires_lineage():
     pipe = IncidentResponsePipeline()
     with pytest.raises(ValueError):
         pipe.run()
+
+
+
+def test_rank_deficiency_respects_D_bound():
+    """
+    When D < min(M, K), the effective max rank is D, not min(M, K).
+    The factorization E = V @ S.T constrains rank(E) <= min(M, K, D).
+    """
+    # S: shape (K=4, D=3) - 4 histories, each 3-dimensional
+    # V: shape (M=4, D=3) - 4 observers, each projecting onto D=3 dims
+    # E = V @ S.T has shape (M=4, K=4), rank <= min(4, 4, 3) = 3
+    S = np.array([
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0],
+    ])
+    V = np.array([
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        [0.0, 0.0, 1.0],
+        [1.0, 1.0, 1.0],
+    ])
+    ev = UnifiedEvaluation(global_sections=S, observers=V)
+    metrics = ev.rank_metrics()
+    assert metrics["M"] == 4
+    assert metrics["K"] == 4
+    assert metrics["D"] == 3
+    assert metrics["theoretical_max_rank"] == 4
+    assert metrics["effective_max_rank"] == 3
+    # Rank is bounded by D even though M and K are both 4
+    assert metrics["actual_rank"] <= 3
+    # Both statistics measure against the effective bound
+    assert ev.rank_deficiency() >= 0
+    assert ev.rank_deficiency() == 3 - metrics["actual_rank"]
+
+
+def test_rank_deficiency_zero_when_full_rank():
+    """A well-conditioned case achieves effective_max_rank."""
+    S = np.eye(3)
+    V = np.eye(3)
+    ev = UnifiedEvaluation(global_sections=S, observers=V)
+    assert ev.rank_deficiency() == 0
+    assert ev.rank_metrics()["actual_rank"] == 3
+
+
+def test_rank_deficiency_positive_when_collapsed():
+    """A collapsed case must show positive deficiency."""
+    # Two identical histories -> rank loss of 1
+    S = np.array([
+        [1.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+    ])
+    V = np.eye(3)
+    ev = UnifiedEvaluation(global_sections=S, observers=V)
+    assert ev.rank_deficiency() == 1

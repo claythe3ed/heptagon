@@ -359,18 +359,43 @@ class UnifiedEvaluation:
 
     def rank_deficiency(self) -> int:
         """
-        Return  max_rank - rank(E),  where max_rank = min(M, K).
+        Return  effective_max_rank - rank(E).
 
-        0 means the evaluation map achieves the maximum possible rank
-        given the dimensions — no information lost beyond the
-        unavoidable dimensional limit.
-        Positive means genuine collapse.
+        E = V @ S.T is constrained by the factorization, so its rank
+        cannot exceed:
+            min(M, K, D)
+        where M = number of observers, K = number of histories,
+        D = dimension of each history.
+
+        The D-bound is essential: even with M and K large, E cannot
+        distinguish more independent histories than D permits.
+
+        0 means E achieves its effective maximum rank — no
+        information lost beyond what the dimensions allow.
+        Positive means genuine collapse within that bound.
         """
         E = self.evaluate()
         M, K = E.shape
         D = self.global_sections.shape[1]
-        max_rank = min(M, K, D)
-        return int(max_rank - np.linalg.matrix_rank(E))
+        effective_max_rank = min(M, K, D)
+        return int(effective_max_rank - np.linalg.matrix_rank(E))
+
+    def rank_metrics(self) -> dict:
+        """
+        Detailed rank metrics for callers who need to see the bound.
+        """
+        E = self.evaluate()
+        M, K = E.shape
+        D = self.global_sections.shape[1]
+        return {
+            "M": M,
+            "K": K,
+            "D": D,
+            "theoretical_max_rank": min(M, K),
+            "effective_max_rank": min(M, K, D),
+            "actual_rank": int(np.linalg.matrix_rank(E)),
+            "deficiency": int(min(M, K, D) - np.linalg.matrix_rank(E)),
+        }
 
     def distinctness_fraction(self, tol: float = 1e-10) -> float:
         """
