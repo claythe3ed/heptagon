@@ -113,6 +113,21 @@ class Decision:
       - F6 (effect):    effect_artifacts (evidence IDs of downstream
                         state changes)
       - F7 (lineage):   predecessor + successors (escalation edges)
+
+    Signing
+    -------
+    A decision carries a ``signature`` field. Its meaning depends on
+    ``signature_algorithm``:
+
+      "sha256-truncated"  first 16 hex chars of SHA-256 over the
+                          canonical payload (legacy, NOT secure)
+
+      "ed25519"           full Ed25519 signature over the canonical
+                          payload, verifiable against
+                          ``signer_public_key``
+
+    Callers who need real tamper-evidence should pass ``signer`` to
+    :meth:`new`. The default preserves backward compatibility.
     """
     decision_id: str
     actor: str
@@ -121,9 +136,32 @@ class Decision:
     evidence_refs: List[str]
     break_glass: bool = False
     signature: str = ""
+    signature_algorithm: str = "sha256-truncated"
+    signer_public_key: str = ""
     effect_artifacts: List[str] = field(default_factory=list)
     predecessor: Optional[str] = None
     successors: List[str] = field(default_factory=list)
+
+    @staticmethod
+    def canonical_bytes(d: "Decision") -> bytes:
+        """
+        Canonical byte representation signed by Ed25519.
+
+        Only fields that participate in the signature are included.
+        Signature fields themselves are excluded.
+        """
+        parts = [
+            d.decision_id,
+            d.actor,
+            d.timestamp.isoformat(),
+            d.rationale,
+            ",".join(sorted(d.evidence_refs)),
+            ",".join(sorted(d.effect_artifacts)),
+            d.predecessor or "",
+            ",".join(sorted(d.successors)),
+            "1" if d.break_glass else "0",
+        ]
+        return "|".join(parts).encode("utf-8")
 
     @staticmethod
     def new(actor: str, rationale: str,
@@ -131,7 +169,8 @@ class Decision:
             break_glass: bool = False,
             effect_artifacts: Optional[List[str]] = None,
             predecessor: Optional[str] = None,
-            successors: Optional[List[str]] = None) -> "Decision":
+            successors: Optional[List[str]] = None,
+            signer=None) -> "Decision":
         d = Decision(
             decision_id=str(uuid.uuid4()),
             actor=actor,
@@ -143,9 +182,17 @@ class Decision:
             predecessor=predecessor,
             successors=successors or [],
         )
-        # A simple content signature so the entry is tamper-evident.
-        payload = f"{d.decision_id}|{d.actor}|{d.timestamp.isoformat()}|{d.rationale}"
-        d.signature = hashlib.sha256(payload.encode()).hexdigest()[:16]
+        payload = Decision.canonical_bytes(d)
+        if signer is not None:
+            sig_bytes = signer.sign(payload)
+            d.signature = sig_bytes.hex()
+            d.signature_algorithm = "ed25519"
+            d.signer_public_key = signer.public_key_hex
+        else:
+            # Legacy fallback: content hash (not cryptographically secure)
+            d.signature = hashlib.sha256(payload).hexdigest()[:16]
+            d.signature_algorithm = "sha256-truncated"
+            d.signer_public_key = ""
         return d
 
 
@@ -315,18 +362,23 @@ class CIRPModel:
     def check_no_hidden_thing(self) -> Dict:
         """
         The flabbiness condition: every piece of evidence is present
-        in the global log, and every decision is timestamped + signed.
+        in the global log, and every decision carries a valid
+        signature.
+
+        Decisions signed with Ed25519 have their signature verified
+        against the canonical payload and the declared public key.
+        Decisions signed with the legacy "sha256-truncated" algorithm
+        are treated as non-empty but unverifiable.
         """
-        # Build the symbolic sheaf over evidence
         if not self.evidence_log:
             return {"ok": False, "reason": "no evidence logged"}
 
+        # Build the symbolic sheaf over evidence
         global_section = np.array([
             int(e.sha256[:8], 16) for e in self.evidence_log
         ], dtype=float)
 
         sheaf = MoralSheaf(global_section=global_section)
-        # Every local source contributes its slice
         by_source: Dict[str, List[int]] = {}
         for i, e in enumerate(self.evidence_log):
             by_source.setdefault(e.source, []).append(i)
@@ -334,19 +386,44 @@ class CIRPModel:
         for source, indices in by_source.items():
             local = np.zeros_like(global_section)
             local[indices] = global_section[indices]
-            # The flabbiness test is on the FULL global section, so
-            # we register the source's own contribution:
             sheaf.add_local(source, local)
 
-        # Unsigned decisions break the "no hidden thing" rule
-        unsigned = [d.decision_id for d in self.decisions_log if not d.signature]
+        unsigned: List[str] = []
+        invalid_signatures: List[str] = []
+        legacy_unsigned: List[str] = []
 
+        # Import at call site to avoid a circular import at module load
+        from heptagon.audit.signing import Signer
+
+        for d in self.decisions_log:
+            if not d.signature:
+                unsigned.append(d.decision_id)
+                continue
+            if d.signature_algorithm == "ed25519":
+                payload = Decision.canonical_bytes(d)
+                try:
+                    pk = bytes.fromhex(d.signer_public_key)
+                    sig = bytes.fromhex(d.signature)
+                except ValueError:
+                    invalid_signatures.append(d.decision_id)
+                    continue
+                if not Signer.verify(pk, payload, sig):
+                    invalid_signatures.append(d.decision_id)
+            elif d.signature_algorithm == "sha256-truncated":
+                legacy_unsigned.append(d.decision_id)
+
+        ok = (
+            sheaf.is_flabby()
+            and not unsigned
+            and not invalid_signatures
+        )
         return {
-            "ok": sheaf.is_flabby() and not unsigned,
+            "ok": ok,
             "sheaf_flabby": sheaf.is_flabby(),
             "unsigned_decisions": unsigned,
+            "invalid_signatures": invalid_signatures,
+            "legacy_sha256_decisions": legacy_unsigned,
         }
-
     def check_break_glass_logged(self) -> Dict:
         """
         Every break-glass decision must be marked and referenced.

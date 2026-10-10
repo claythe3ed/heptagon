@@ -153,6 +153,39 @@ def cmd_simulate(args: argparse.Namespace) -> int:
     return 0 if result["escalation_valid"] else 1
 
 
+def cmd_keygen(args: argparse.Namespace) -> int:
+    """Generate a new Ed25519 keypair and save it to a file."""
+    from heptagon.audit.signing import Signer
+
+    out = Path(args.out)
+    if out.exists() and not args.force:
+        print(f"ERROR: {out} already exists (use --force to overwrite)",
+              file=sys.stderr)
+        return 2
+
+    signer = Signer.generate()
+    signer.save(out)
+
+    info = {
+        "path": str(out),
+        "algorithm": "ed25519",
+        "public_key_hex": signer.public_key_hex,
+        "created_utc": signer.created_utc,
+    }
+
+    if args.json:
+        print(json.dumps(info, indent=2))
+    else:
+        print(f"Keypair written to: {out}")
+        print(f"Algorithm:          ed25519")
+        print(f"Public key (hex):   {signer.public_key_hex}")
+        print()
+        print("Keep the private key secure. Back up the file.")
+        print("The public key is safe to share.")
+
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Argument parser
 # ---------------------------------------------------------------------------
@@ -189,6 +222,19 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true",
                    help="machine-readable output")
     p.set_defaults(func=cmd_verify)
+
+    # keygen
+    p = sub.add_parser(
+        "keygen",
+        help="generate an Ed25519 keypair for signing decisions",
+    )
+    p.add_argument("--out", type=Path, required=True,
+                   help="path to write the keypair JSON")
+    p.add_argument("--force", action="store_true",
+                   help="overwrite existing file")
+    p.add_argument("--json", action="store_true",
+                   help="machine-readable output")
+    p.set_defaults(func=cmd_keygen)
 
     # simulate
     p = sub.add_parser(
