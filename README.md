@@ -35,6 +35,17 @@ gate enforces this on every logged evidence and decision.
 
 ## Install
 
+    pip install heptagon7
+
+The PyPI project is named **heptagon7** — the name `heptagon` was
+already taken on PyPI. After installing, the Python import and the
+CLI command are both `heptagon`:
+
+    import heptagon          # library
+    heptagon --help          # CLI
+
+For local development:
+
     python3 -m venv .venv
     source .venv/bin/activate
     pip install -e .
