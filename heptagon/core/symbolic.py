@@ -409,14 +409,6 @@ class MoralJacobians:
         off = self.influence - np.diag(np.diag(self.influence))
         return bool(np.linalg.norm(off) > tol)
 
-    def propagated_state(
-        self,
-        s1: np.ndarray,
-        acts: np.ndarray,
-        phi_power: np.ndarray,
-    ) -> np.ndarray:
-        return phi_power @ s1 + self.influence[:, -1] @ acts
-
     def responsibility_vector(self) -> np.ndarray:
         return self.responsibility.copy()
 
