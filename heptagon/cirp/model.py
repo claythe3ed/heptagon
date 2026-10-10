@@ -101,6 +101,27 @@ class Evidence:
             description=description,
         )
 
+    def to_dict(self) -> Dict:
+        return {
+            "evidence_id": self.evidence_id,
+            "source": self.source,
+            "timestamp": self.timestamp.isoformat(),
+            "sha256": self.sha256,
+            "custodian": self.custodian,
+            "description": self.description,
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "Evidence":
+        return cls(
+            evidence_id=data["evidence_id"],
+            source=data["source"],
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            sha256=data["sha256"],
+            custodian=data["custodian"],
+            description=data.get("description", ""),
+        )
+
 
 @dataclass
 class Decision:
@@ -162,6 +183,40 @@ class Decision:
             "1" if d.break_glass else "0",
         ]
         return "|".join(parts).encode("utf-8")
+
+    def to_dict(self) -> Dict:
+        return {
+            "decision_id": self.decision_id,
+            "actor": self.actor,
+            "timestamp": self.timestamp.isoformat(),
+            "rationale": self.rationale,
+            "evidence_refs": list(self.evidence_refs),
+            "break_glass": bool(self.break_glass),
+            "signature": self.signature,
+            "signature_algorithm": self.signature_algorithm,
+            "signer_public_key": self.signer_public_key,
+            "effect_artifacts": list(self.effect_artifacts),
+            "predecessor": self.predecessor,
+            "successors": list(self.successors),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict) -> "Decision":
+        return cls(
+            decision_id=data["decision_id"],
+            actor=data["actor"],
+            timestamp=datetime.fromisoformat(data["timestamp"]),
+            rationale=data["rationale"],
+            evidence_refs=list(data.get("evidence_refs", [])),
+            break_glass=bool(data.get("break_glass", False)),
+            signature=data.get("signature", ""),
+            signature_algorithm=data.get("signature_algorithm",
+                                         "sha256-truncated"),
+            signer_public_key=data.get("signer_public_key", ""),
+            effect_artifacts=list(data.get("effect_artifacts", [])),
+            predecessor=data.get("predecessor"),
+            successors=list(data.get("successors", [])),
+        )
 
     @staticmethod
     def new(actor: str, rationale: str,
