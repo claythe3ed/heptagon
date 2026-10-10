@@ -285,3 +285,100 @@ def test_evidence_completeness_scales_linearly():
 
     assert result["ok"] is True
     assert elapsed < 1.0, f"took {elapsed:.3f}s for 500 items"
+
+
+
+# ---------------------------------------------------------------------------
+# Session 6: 7D completeness proof tests
+# ---------------------------------------------------------------------------
+
+def test_7d_fails_when_decision_has_no_effect_artifacts():
+    """A decision with empty effect_artifacts fails F6."""
+    c = _make_complete_cirp()
+    ev = Evidence.from_bytes("soc", "analyst", b"x", "d")
+    c.log_evidence(ev)
+    d = Decision.new("cyber_mgmt", "isolate", [ev.evidence_id],
+                     predecessor="response")
+    c.log_decision(d)
+    result = c.check_7d_completeness()
+    assert result["ok"] is False
+    coord_id, coord, _reason = next(v for v in result["violations"]
+                                     if v[1] == "F6")
+    assert coord_id == d.decision_id
+    assert coord == "F6"
+
+
+def test_7d_fails_when_effect_artifact_unknown():
+    """effect_artifacts referencing unknown evidence fails F6."""
+    c = _make_complete_cirp()
+    ev = Evidence.from_bytes("soc", "analyst", b"x", "d")
+    c.log_evidence(ev)
+    d = Decision.new("cyber_mgmt", "isolate", [ev.evidence_id],
+                     effect_artifacts=["ghost-id"],
+                     predecessor="response")
+    c.log_decision(d)
+    result = c.check_7d_completeness()
+    assert result["ok"] is False
+    assert any(v[1] == "F6" for v in result["violations"])
+
+
+def test_7d_fails_when_lineage_missing():
+    """A decision with no predecessor and no successors fails F7."""
+    c = _make_complete_cirp()
+    ev = Evidence.from_bytes("soc", "analyst", b"x", "d")
+    c.log_evidence(ev)
+    d = Decision.new("cyber_mgmt", "isolate", [ev.evidence_id],
+                     effect_artifacts=[ev.evidence_id])
+    c.log_decision(d)
+    result = c.check_7d_completeness()
+    assert result["ok"] is False
+    assert any(v[1] == "F7" for v in result["violations"])
+
+
+def test_7d_passes_with_predecessor_only():
+    """Predecessor alone satisfies F7."""
+    c = _make_complete_cirp()
+    ev = Evidence.from_bytes("soc", "analyst", b"x", "d")
+    c.log_evidence(ev)
+    d = Decision.new("cyber_mgmt", "isolate", [ev.evidence_id],
+                     effect_artifacts=[ev.evidence_id],
+                     predecessor="response")
+    c.log_decision(d)
+    result = c.check_7d_completeness()
+    assert result["ok"] is True
+
+
+def test_7d_passes_with_successors_only():
+    """Successors alone satisfy F7."""
+    c = _make_complete_cirp()
+    ev = Evidence.from_bytes("soc", "analyst", b"x", "d")
+    c.log_evidence(ev)
+    d = Decision.new("cyber_mgmt", "isolate", [ev.evidence_id],
+                     effect_artifacts=[ev.evidence_id],
+                     successors=["crisis_mgmt"])
+    c.log_decision(d)
+    result = c.check_7d_completeness()
+    assert result["ok"] is True
+
+
+def test_7d_coverage_report_shape():
+    """The coverage report exposes B_evidence and per-decision coords."""
+    c = _make_complete_cirp()
+    ev = Evidence.from_bytes("soc", "analyst", b"x", "d")
+    c.log_evidence(ev)
+    d = Decision.new("cyber_mgmt", "isolate", [ev.evidence_id],
+                     effect_artifacts=[ev.evidence_id],
+                     predecessor="response",
+                     successors=["crisis_mgmt"])
+    c.log_decision(d)
+    result = c.check_7d_completeness()
+    cov = result["coordinate_coverage"]
+    assert "B_evidence" in cov
+    assert "B_decision" in cov
+    assert "F5_decision" in cov
+    assert "F6_decision" in cov
+    assert "F7_decision" in cov
+    # Every coordinate fully populated
+    for key, (ok_count, miss_count) in cov.items():
+        assert miss_count == 0, f"{key} had {miss_count} missing"
+        assert ok_count > 0

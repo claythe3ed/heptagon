@@ -106,6 +106,13 @@ class Evidence:
 class Decision:
     """
     A logged decision with timestamp (CIRP section 9, rule 5).
+
+    Carries the seven-coordinate fields:
+      - B (spacetime):  timestamp + actor
+      - F5 (intention): rationale
+      - F6 (effect):    effect_artifacts (evidence IDs of downstream
+                        state changes)
+      - F7 (lineage):   predecessor + successors (escalation edges)
     """
     decision_id: str
     actor: str
@@ -114,11 +121,17 @@ class Decision:
     evidence_refs: List[str]
     break_glass: bool = False
     signature: str = ""
+    effect_artifacts: List[str] = field(default_factory=list)
+    predecessor: Optional[str] = None
+    successors: List[str] = field(default_factory=list)
 
     @staticmethod
     def new(actor: str, rationale: str,
             evidence_refs: Optional[List[str]] = None,
-            break_glass: bool = False) -> "Decision":
+            break_glass: bool = False,
+            effect_artifacts: Optional[List[str]] = None,
+            predecessor: Optional[str] = None,
+            successors: Optional[List[str]] = None) -> "Decision":
         d = Decision(
             decision_id=str(uuid.uuid4()),
             actor=actor,
@@ -126,6 +139,9 @@ class Decision:
             rationale=rationale,
             evidence_refs=evidence_refs or [],
             break_glass=break_glass,
+            effect_artifacts=effect_artifacts or [],
+            predecessor=predecessor,
+            successors=successors or [],
         )
         # A simple content signature so the entry is tamper-evident.
         payload = f"{d.decision_id}|{d.actor}|{d.timestamp.isoformat()}|{d.rationale}"
@@ -351,6 +367,102 @@ class CIRPModel:
             "unmarked_break_glass": unmarked,
         }
 
+    def check_7d_completeness(self) -> Dict:
+        """
+        Verify that every logged record populates the seven
+        coordinates defined by the 7D philosophy.
+
+        Coordinate rules:
+          B  (spacetime) - evidence: timestamp + source non-empty
+                           decision: timestamp + actor non-empty
+          F5 (intention) - decision: rationale non-empty
+          F6 (effect)    - decision: effect_artifacts non-empty and
+                           every reference points to a logged
+                           evidence item
+          F7 (lineage)   - decision: at least one of predecessor /
+                           successors is declared
+        """
+        violations = []
+
+        e_B_ok = e_B_missing = 0
+        for e in self.evidence_log:
+            if e.timestamp is not None and e.source and e.source.strip():
+                e_B_ok += 1
+            else:
+                e_B_missing += 1
+                violations.append(
+                    (e.evidence_id, "B", "evidence missing timestamp or source")
+                )
+
+        d_B_ok = d_B_missing = 0
+        d_F5_ok = d_F5_missing = 0
+        d_F6_ok = d_F6_missing = 0
+        d_F7_ok = d_F7_missing = 0
+
+        known_evidence = {e.evidence_id for e in self.evidence_log}
+
+        for d in self.decisions_log:
+            # B
+            if d.timestamp is not None and d.actor and d.actor.strip():
+                d_B_ok += 1
+            else:
+                d_B_missing += 1
+                violations.append(
+                    (d.decision_id, "B", "decision missing timestamp or actor")
+                )
+
+            # F5
+            if d.rationale and d.rationale.strip():
+                d_F5_ok += 1
+            else:
+                d_F5_missing += 1
+                violations.append((d.decision_id, "F5", "empty rationale"))
+
+            # F6
+            if d.effect_artifacts:
+                bad_refs = [
+                    r for r in d.effect_artifacts if r not in known_evidence
+                ]
+                if bad_refs:
+                    d_F6_missing += 1
+                    violations.append(
+                        (d.decision_id, "F6",
+                         f"effect_artifacts reference unknown evidence: {bad_refs}")
+                    )
+                else:
+                    d_F6_ok += 1
+            else:
+                d_F6_missing += 1
+                violations.append(
+                    (d.decision_id, "F6", "no effect_artifacts declared")
+                )
+
+            # F7
+            has_pred = d.predecessor is not None and d.predecessor != ""
+            has_succ = bool(d.successors)
+            if has_pred or has_succ:
+                d_F7_ok += 1
+            else:
+                d_F7_missing += 1
+                violations.append(
+                    (d.decision_id, "F7",
+                     "no predecessor or successors declared")
+                )
+
+        ok = len(violations) == 0
+
+        return {
+            "ok": ok,
+            "coordinate_coverage": {
+                "B_evidence": (e_B_ok, e_B_missing),
+                "B_decision": (d_B_ok, d_B_missing),
+                "F5_decision": (d_F5_ok, d_F5_missing),
+                "F6_decision": (d_F6_ok, d_F6_missing),
+                "F7_decision": (d_F7_ok, d_F7_missing),
+            },
+            "violations": violations,
+        }
+
     def verify_all(self) -> Dict:
         """Run every compliance check and return a consolidated report."""
         checks = {
@@ -359,6 +471,7 @@ class CIRPModel:
             "evidence_completeness": self.check_evidence_completeness(),
             "no_hidden_thing": self.check_no_hidden_thing(),
             "break_glass_logged": self.check_break_glass_logged(),
+            "7d_completeness": self.check_7d_completeness(),
         }
         all_ok = all(c.get("ok", False) for c in checks.values())
         return {
@@ -690,14 +803,23 @@ def demo() -> None:
 
     d1 = Decision.new("cyber_mgmt",
                       "Isolate host-12 from network",
-                      evidence_refs=[ev1.evidence_id, ev2.evidence_id])
+                      evidence_refs=[ev1.evidence_id, ev2.evidence_id],
+                      effect_artifacts=[ev2.evidence_id],
+                      predecessor="response",
+                      successors=["crisis_mgmt"])
     d2 = Decision.new("cyber_mgmt",
                       "Engage forensics firm via third_party",
-                      evidence_refs=[ev2.evidence_id])
+                      evidence_refs=[ev2.evidence_id],
+                      effect_artifacts=[ev2.evidence_id],
+                      predecessor="response",
+                      successors=["crisis_mgmt"])
     d3 = Decision.new("response",
                       "Break-glass to recover admin access",
                       evidence_refs=[ev1.evidence_id],
-                      break_glass=True)
+                      break_glass=True,
+                      effect_artifacts=[ev1.evidence_id],
+                      predecessor=None,
+                      successors=["cyber_mgmt"])
     cirp.log_decision(d1)
     cirp.log_decision(d2)
     cirp.log_decision(d3)

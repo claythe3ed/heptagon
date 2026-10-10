@@ -92,6 +92,18 @@ class FiberBundle7D:
             f"lineage={self.f7_dim}D) -> total {self.total_dim}D"
         )
 
+    @property
+    def coordinate_names(self) -> List[str]:
+        """
+        Semantic labels for the seven coordinates.
+
+        B0..Bk are the base spacetime dimensions; the trailing three
+        are the symbolic coordinates F5 (intention), F6 (effect),
+        F7 (lineage).
+        """
+        base = [f"B{i}" for i in range(self.base_dim)]
+        return base + ["F5_intention", "F6_effect", "F7_lineage"]
+
 
 # ---------------------------------------------------------------------------
 # 2. The flabby-sheaf condition: "no hidden thing"
