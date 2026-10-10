@@ -36,7 +36,7 @@ License: MIT
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import numpy as np
 
@@ -148,21 +148,117 @@ class MoralSheaf:
 @dataclass
 class Lineage:
     """
-    (P, ≺) where p_i ≺ p_j means p_i is an ancestor / predecessor of p_j.
-    P = {p_1, ..., p_N}; p_1 = root, p_N = latest node.
+    A directed acyclic graph (DAG) of reporting / ancestry structure.
+
+    If `edges` is not provided, defaults to a linear chain:
+        0 -> 1 -> 2 -> ... -> N-1
+
+    If `edges` is provided, it is a list of (parent_index, child_index)
+    pairs. The DAG must:
+      - Reference indices in [0, N)
+      - Contain no self-loops
+      - Contain no cycles
+
+    Backward compatible with the previous chain-only implementation:
+    - `is_ancestor(i, j)` on the default chain returns the same values
+    - `ancestors_of(j)` on the default chain returns [0..j-1]
+    - `predecessor[i]` returns the first parent of i, or -1 for a root
     """
     labels: List[str]
+    edges: Optional[List[Tuple[int, int]]] = None
+
+    children: Dict[int, List[int]] = field(init=False)
+    parents: Dict[int, List[int]] = field(init=False)
     predecessor: Dict[int, int] = field(init=False)
 
     def __post_init__(self) -> None:
         self.N = len(self.labels)
-        self.predecessor = {i: i - 1 for i in range(1, self.N)}
+        if self.N == 0:
+            raise ValueError("Lineage must have at least one label")
+
+        if self.edges is None:
+            edges = [(i, i + 1) for i in range(self.N - 1)]
+        else:
+            edges = list(self.edges)
+
+        for (a, b) in edges:
+            if not (0 <= a < self.N and 0 <= b < self.N):
+                raise ValueError(
+                    f"edge ({a}, {b}) references index outside [0, {self.N})"
+                )
+            if a == b:
+                raise ValueError(f"self-loop at {a} is not allowed")
+
+        self.children = {i: [] for i in range(self.N)}
+        self.parents = {i: [] for i in range(self.N)}
+        for (a, b) in edges:
+            self.children[a].append(b)
+            self.parents[b].append(a)
+
+        self.predecessor = {
+            i: (self.parents[i][0] if self.parents[i] else -1)
+            for i in range(self.N)
+        }
+
+        if self._has_cycle():
+            raise ValueError("Lineage edges contain a cycle")
+
+    def _has_cycle(self) -> bool:
+        WHITE, GRAY, BLACK = 0, 1, 2
+        color = {i: WHITE for i in range(self.N)}
+        for start in range(self.N):
+            if color[start] != WHITE:
+                continue
+            stack: List[Tuple[int, int]] = [(start, 0)]
+            color[start] = GRAY
+            while stack:
+                node, pos = stack[-1]
+                if pos >= len(self.children[node]):
+                    color[node] = BLACK
+                    stack.pop()
+                    continue
+                child = self.children[node][pos]
+                stack[-1] = (node, pos + 1)
+                if color[child] == GRAY:
+                    return True
+                if color[child] == WHITE:
+                    color[child] = GRAY
+                    stack.append((child, 0))
+        return False
 
     def is_ancestor(self, i: int, j: int) -> bool:
-        return bool(0 <= i < j < self.N)
+        """True if there is a directed path from i to j (i != j)."""
+        if i == j:
+            return False
+        if not (0 <= i < self.N and 0 <= j < self.N):
+            return False
+        seen: Set[int] = set()
+        stack = [i]
+        while stack:
+            node = stack.pop()
+            if node == j:
+                return True
+            if node in seen:
+                continue
+            seen.add(node)
+            stack.extend(self.children[node])
+        return False
 
     def ancestors_of(self, j: int) -> List[int]:
-        return [i for i in range(j) if self.is_ancestor(i, j)]
+        """All nodes with a directed path to j, sorted ascending."""
+        return sorted(i for i in range(self.N) if self.is_ancestor(i, j))
+
+    def successors_of(self, i: int) -> List[int]:
+        """Direct children of node i."""
+        return list(self.children[i])
+
+    def predecessors_of(self, j: int) -> List[int]:
+        """Direct parents of node j."""
+        return list(self.parents[j])
+
+    def roots(self) -> List[int]:
+        """Nodes with no parents."""
+        return [i for i in range(self.N) if not self.parents[i]]
 
     def successor_state(
         self,

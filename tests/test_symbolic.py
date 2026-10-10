@@ -217,3 +217,79 @@ def test_rank_deficiency_positive_when_collapsed():
     V = np.eye(3)
     ev = UnifiedEvaluation(global_sections=S, observers=V)
     assert ev.rank_deficiency() == 1
+
+
+
+# ---------------------------------------------------------------------------
+# Lineage as DAG — Session 4 tests
+# ---------------------------------------------------------------------------
+
+def test_lineage_default_is_linear_chain():
+    """Backward compat: no edges -> chain 0 -> 1 -> ... -> N-1."""
+    lin = Lineage(labels=["a", "b", "c", "d"])
+    assert lin.N == 4
+    assert lin.is_ancestor(0, 3) is True
+    assert lin.is_ancestor(3, 0) is False
+    assert lin.ancestors_of(3) == [0, 1, 2]
+    assert lin.successors_of(0) == [1]
+    assert lin.successors_of(3) == []
+    assert lin.roots() == [0]
+
+
+def test_lineage_dag_branching():
+    """A branching DAG: ciso -> {ceo, legal}."""
+    labels = ["soc", "ir_lead", "ciso", "ceo", "legal"]
+    edges = [(0, 1), (1, 2), (2, 3), (2, 4)]
+    lin = Lineage(labels=labels, edges=edges)
+    # soc reaches legal via ir_lead -> ciso
+    assert lin.is_ancestor(0, 4) is True
+    # ceo and legal are siblings — neither is ancestor of the other
+    assert lin.is_ancestor(3, 4) is False
+    assert lin.is_ancestor(4, 3) is False
+    # ancestors of legal
+    assert lin.ancestors_of(4) == [0, 1, 2]
+    # successors of ciso
+    assert sorted(lin.successors_of(2)) == [3, 4]
+    # roots
+    assert lin.roots() == [0]
+
+
+def test_lineage_dag_multiple_parents():
+    """A node with multiple parents: a, b, c all point to d."""
+    labels = ["a", "b", "c", "d"]
+    edges = [(0, 3), (1, 3), (2, 3)]
+    lin = Lineage(labels=labels, edges=edges)
+    assert sorted(lin.predecessors_of(3)) == [0, 1, 2]
+    assert lin.roots() == [0, 1, 2]
+    # predecessor field is the first parent
+    assert lin.predecessor[3] == 0
+    # every root is ancestor of d
+    assert all(lin.is_ancestor(i, 3) for i in (0, 1, 2))
+
+
+def test_lineage_rejects_cycle():
+    """A cycle in edges must raise ValueError."""
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="cycle"):
+        Lineage(labels=["a", "b", "c"], edges=[(0, 1), (1, 2), (2, 0)])
+
+
+def test_lineage_rejects_self_loop():
+    """A self-loop (a, a) must raise ValueError."""
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="self-loop"):
+        Lineage(labels=["a", "b"], edges=[(0, 0)])
+
+
+def test_lineage_rejects_out_of_bounds():
+    """An edge referencing an index >= N must raise ValueError."""
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="outside"):
+        Lineage(labels=["a", "b"], edges=[(0, 5)])
+
+
+def test_lineage_rejects_empty_labels():
+    """A Lineage with no labels must raise ValueError."""
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="at least one"):
+        Lineage(labels=[])
