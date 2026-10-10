@@ -137,3 +137,75 @@ def test_teams_complete_passes_when_all_5_present_and_complete():
     assert result["ok"] is True
     assert result["missing_roles"] == []
     assert result["incomplete_teams"] == []
+
+
+
+# ---------------------------------------------------------------------------
+# Session 4: run_tabletop escalation validation tests
+# ---------------------------------------------------------------------------
+
+from heptagon.cirp.model import Scenario
+
+
+def test_tabletop_valid_escalation():
+    """A well-formed escalation chain reaches every node."""
+    c = _make_complete_cirp()
+    c.add_scenario(Scenario(
+        name="test_valid",
+        triggers=["x"],
+        escalation=["response", "cyber_mgmt", "crisis_mgmt"],
+        key_considerations=[],
+    ))
+    result = c.run_tabletop("test_valid", num_rounds=5)
+    assert result["escalation_valid"] is True
+    assert result["escalation_gaps"] == []
+    assert result["coverage_ratio"] == 1.0
+    assert result["mandate_violations"] == []
+
+
+def test_tabletop_detects_gap_in_escalation():
+    """An unreachable escalation hop must be reported as a gap."""
+    c = _make_complete_cirp()
+    c.add_scenario(Scenario(
+        name="test_gap",
+        triggers=["x"],
+        # third_party has no children; response cannot be reached from it
+        escalation=["third_party", "response"],
+        key_considerations=[],
+    ))
+    result = c.run_tabletop("test_gap", num_rounds=5)
+    assert result["escalation_valid"] is False
+    assert ("third_party", "response") in result["escalation_gaps"]
+    assert result["coverage_ratio"] < 1.0
+
+
+def test_tabletop_detects_mandate_violation():
+    """A reached role with an empty mandate is flagged."""
+    c = _make_complete_cirp()
+    c.teams = [t for t in c.teams if t.role != "cyber_mgmt"]
+    c.add_team(Team("cyber_mgmt", ["b"], "+1", "+2", ""))
+    c.add_scenario(Scenario(
+        name="test_mandate",
+        triggers=["x"],
+        escalation=["response", "cyber_mgmt"],
+        key_considerations=[],
+    ))
+    result = c.run_tabletop("test_mandate", num_rounds=5)
+    assert result["escalation_valid"] is False
+    assert "cyber_mgmt" in result["mandate_violations"]
+
+
+def test_tabletop_arrival_rounds_is_bfs_depth():
+    """Arrival rounds reflect BFS depth from the trigger."""
+    c = _make_complete_cirp()
+    c.add_scenario(Scenario(
+        name="test_bfs",
+        triggers=["x"],
+        escalation=["response", "cyber_mgmt", "crisis_mgmt"],
+        key_considerations=[],
+    ))
+    result = c.run_tabletop("test_bfs", num_rounds=5)
+    arr = result["arrival_rounds"]
+    assert arr["response"] == 0
+    assert arr["cyber_mgmt"] == 1
+    assert arr["crisis_mgmt"] == 2

@@ -315,11 +315,15 @@ class CIRPModel:
         Every break-glass decision must be marked and referenced.
         """
         bg = [d for d in self.decisions_log if d.break_glass]
-        unmarked = [
-            d.decision_id for d in bg
-            if "break_glass" not in d.rationale.lower()
-            or not d.evidence_refs
-        ]
+        unmarked = []
+        for d in bg:
+            normalized = (
+                d.rationale.lower()
+                .replace("-", "_")
+                .replace(" ", "_")
+            )
+            if "break_glass" not in normalized or not d.evidence_refs:
+                unmarked.append(d.decision_id)
         return {
             "ok": not unmarked,
             "total_break_glass": len(bg),
@@ -356,9 +360,17 @@ class CIRPModel:
         """
         Simulate a tabletop exercise for a given scenario.
 
-        Each team becomes an agent. Influence is derived from the
-        reporting chain. The exercise produces a timeline and a
-        compliance verdict.
+        Walks the scenario's escalation order through the reporting
+        DAG and verifies that every escalation hop is achievable.
+
+        Returns both symbolic diagnostics (backward compatible) and
+        new escalation-validation fields:
+          - escalation_valid:   True iff the full chain works
+          - escalation_path:    (from_role, to_role, hops) triples
+          - escalation_gaps:    hops that cannot be traversed
+          - arrival_rounds:     role -> BFS depth from trigger
+          - coverage_ratio:     reached / total escalation steps
+          - mandate_violations: reached roles with empty mandate
         """
         scenario = next(
             (s for s in self.scenarios if s.name == scenario_name),
@@ -367,21 +379,117 @@ class CIRPModel:
         if scenario is None:
             raise ValueError(f"unknown scenario: {scenario_name}")
 
-        # 1. Build the Lineage from team roles
         roles = [t.role for t in self.teams]
-        lineage = Lineage(labels=roles)
-        N = lineage.N
-
-        # 2. Build influence from reporting chain
-        influence = np.zeros((N, N))
+        N = len(roles)
         role_to_idx = {r: i for i, r in enumerate(roles)}
+
+        raw_edges = []
         for reporter, target in self.reporting_chain:
             i = role_to_idx.get(reporter)
             j = role_to_idx.get(target)
-            if i is not None and j is not None:
-                influence[i, j] = 1.0
+            if i is not None and j is not None and i != j:
+                raw_edges.append((i, j))
 
-        # 3. Build life_paths: each team acts proportional to its mandate
+        seen = set()
+        unique_edges = []
+        for e in raw_edges:
+            if e not in seen:
+                seen.add(e)
+                unique_edges.append(e)
+
+        if N > 0:
+            lineage = Lineage(labels=roles, edges=unique_edges)
+        else:
+            lineage = None
+
+        influence = np.zeros((N, N))
+        for (i, j) in unique_edges:
+            influence[i, j] = 1.0
+
+        escalation = list(scenario.escalation)
+        arrival_rounds = {}
+        escalation_path = []
+        escalation_gaps = []
+        mandate_violations = []
+        reached = []
+        coverage_ratio = 0.0
+        escalation_valid = False
+
+        if not escalation or lineage is None:
+            return {
+                "escalation_valid": False,
+                "escalation_path": [],
+                "escalation_gaps": [],
+                "arrival_rounds": {},
+                "coverage_ratio": 0.0,
+                "mandate_violations": [],
+                "scenario": scenario_name,
+                "rounds": num_rounds,
+                "num_teams": N,
+                "roles": roles,
+                "escalation_order": escalation,
+                "coverage_edges": 0,
+                "responsibility_diagonal": None,
+                "influence_non_diagonal": None,
+                "faithful": True,
+                "rank_deficiency": 0,
+                "distinctness_fraction": 1.0,
+                "presentations_lengths": [],
+            }
+
+        trigger = escalation[0]
+        trigger_idx = role_to_idx.get(trigger)
+        if trigger_idx is not None:
+            arrival_rounds = {trigger: 0}
+            frontier = [trigger_idx]
+            depth = 0
+            while frontier:
+                depth += 1
+                nxt = []
+                for idx in frontier:
+                    for child_idx in lineage.successors_of(idx):
+                        child_role = roles[child_idx]
+                        if child_role not in arrival_rounds:
+                            arrival_rounds[child_role] = depth
+                            nxt.append(child_idx)
+                frontier = nxt
+
+        for i, target_role in enumerate(escalation[1:], start=1):
+            target_idx = role_to_idx.get(target_role)
+            if target_idx is None:
+                escalation_gaps.append((escalation[i - 1], target_role))
+                continue
+            reached_from = None
+            for source_role in escalation[:i]:
+                source_idx = role_to_idx.get(source_role)
+                if source_idx is None:
+                    continue
+                if lineage.is_ancestor(source_idx, target_idx):
+                    reached_from = source_role
+                    break
+            if reached_from is None:
+                escalation_gaps.append((escalation[i - 1], target_role))
+            else:
+                hops = arrival_rounds.get(target_role, -1)
+                escalation_path.append((reached_from, target_role, hops))
+
+        reached = [r for r in escalation if r in arrival_rounds]
+
+        team_by_role = {t.role: t for t in self.teams}
+        for r in reached:
+            t = team_by_role.get(r)
+            if t is None or not t.mandate.strip():
+                mandate_violations.append(r)
+
+        coverage_ratio = (
+            len(reached) / len(escalation) if escalation else 0.0
+        )
+        escalation_valid = (
+            len(escalation_gaps) == 0
+            and len(mandate_violations) == 0
+            and coverage_ratio == 1.0
+        )
+
         rng = np.random.default_rng(seed)
         life_paths = []
         for i, team in enumerate(self.teams):
@@ -389,28 +497,31 @@ class CIRPModel:
             path = rng.uniform(0.2, 1.0, size=num_rounds) * mandate_strength
             life_paths.append(path)
 
-        # 4. Presentation operator: who sees what
         presenter = PresentationOperator(num_agents=N)
         presentations = presenter.present(life_paths, influence)
-        coverage = presenter.coverage_matrix(influence)
+        cov_matrix = presenter.coverage_matrix(influence)
 
-        # 5. Responsibility vs influence
         responsibility = np.array([
             1.0 if t.is_complete() else -1.0 for t in self.teams
         ])
         jac = MoralJacobians(responsibility, influence)
 
-        # 6. Faithfulness: can every team's contribution be distinguished?
         S = np.vstack(life_paths)
         ev = UnifiedEvaluation(global_sections=S, observers=S.copy())
 
         return {
+            "escalation_valid": escalation_valid,
+            "escalation_path": escalation_path,
+            "escalation_gaps": escalation_gaps,
+            "arrival_rounds": arrival_rounds,
+            "coverage_ratio": coverage_ratio,
+            "mandate_violations": mandate_violations,
             "scenario": scenario_name,
             "rounds": num_rounds,
             "num_teams": N,
             "roles": roles,
             "escalation_order": scenario.escalation,
-            "coverage_edges": int(coverage.sum()),
+            "coverage_edges": int(cov_matrix.sum()),
             "responsibility_diagonal": jac.responsibility_is_diagonal(),
             "influence_non_diagonal": jac.influence_is_non_diagonal(),
             "faithful": ev.is_faithful(),
@@ -418,7 +529,6 @@ class CIRPModel:
             "distinctness_fraction": ev.distinctness_fraction(),
             "presentations_lengths": [len(p) for p in presentations],
         }
-
 
 # ---------------------------------------------------------------------------
 # 3. Reference CIRP
