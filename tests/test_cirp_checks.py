@@ -52,3 +52,40 @@ def test_no_hidden_thing_passes_with_clean_record():
     c.log_decision(d)
     result = c.check_no_hidden_thing()
     assert result["ok"] is True, result
+
+
+
+def test_break_glass_fails_when_not_marked():
+    """A break-glass decision without 'break_glass' in rationale is flagged."""
+    c = _make_complete_cirp()
+    ev = Evidence.from_bytes("soc", "analyst", b"x", "d")
+    c.log_evidence(ev)
+    d = Decision.new("response", "Emergency admin recovery", [ev.evidence_id],
+                     break_glass=True)
+    c.log_decision(d)
+    result = c.check_break_glass_logged()
+    assert result["ok"] is False
+    assert d.decision_id in result["unmarked_break_glass"]
+
+
+def test_break_glass_fails_when_no_evidence():
+    """A break-glass decision without evidence refs is flagged."""
+    c = _make_complete_cirp()
+    d = Decision.new("response", "break_glass access to recover", [],
+                     break_glass=True)
+    c.log_decision(d)
+    result = c.check_break_glass_logged()
+    assert result["ok"] is False
+    assert d.decision_id in result["unmarked_break_glass"]
+
+
+def test_break_glass_passes_when_marked_and_evidenced():
+    """Well-formed break-glass passes."""
+    c = _make_complete_cirp()
+    ev = Evidence.from_bytes("soc", "analyst", b"x", "d")
+    c.log_evidence(ev)
+    d = Decision.new("response", "break_glass to recover admin access",
+                     [ev.evidence_id], break_glass=True)
+    c.log_decision(d)
+    result = c.check_break_glass_logged()
+    assert result["ok"] is True

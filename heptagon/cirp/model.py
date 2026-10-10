@@ -306,7 +306,7 @@ class CIRPModel:
         unmarked = [
             d.decision_id for d in bg
             if "break_glass" not in d.rationale.lower()
-            and not d.evidence_refs
+            or not d.evidence_refs
         ]
         return {
             "ok": not unmarked,
