@@ -86,12 +86,41 @@ def test_moral_jacobians():
         [0.0, 0.0, 0.7],
         [0.0, 0.0, 0.0],
     ])
+    # No observation provided -> property is unverified (None)
     j = MoralJacobians(resp, inf)
-    assert j.responsibility_is_diagonal() is True
+    assert j.responsibility_is_diagonal() is None
     assert j.influence_is_non_diagonal() is True
     assert np.allclose(j.full_jacobian(), np.diag(resp))
     assert np.allclose(j.influence_column(2), inf[:, 2])
     assert np.allclose(j.influence_row(0), inf[0])
+
+
+def test_moral_jacobians_with_observed_diagonal():
+    """An observed Jacobian that IS diagonal must verify True."""
+    resp = np.array([1.0, -1.0, 0.5])
+    inf = np.zeros((3, 3))
+    observed = np.diag([0.9, -0.8, 0.4])
+    j = MoralJacobians(resp, inf, observed_jacobian=observed)
+    assert j.responsibility_is_diagonal() is True
+
+
+def test_moral_jacobians_with_observed_off_diagonal():
+    """An observed Jacobian with nonzero off-diagonal must verify False."""
+    resp = np.array([1.0, -1.0, 0.5])
+    inf = np.zeros((3, 3))
+    observed = np.diag([0.9, -0.8, 0.4]).astype(float)
+    observed[0, 1] = 0.5
+    j = MoralJacobians(resp, inf, observed_jacobian=observed)
+    assert j.responsibility_is_diagonal() is False
+
+
+def test_moral_jacobians_shape_mismatch_observed():
+    """observed_jacobian must match shape (n, n)."""
+    import pytest as _pytest
+    resp = np.array([1.0, 2.0])
+    inf = np.zeros((2, 2))
+    with _pytest.raises(ValueError):
+        MoralJacobians(resp, inf, observed_jacobian=np.zeros((3, 3)))
 
 
 def test_moral_jacobians_shape_mismatch():
@@ -121,7 +150,9 @@ def test_pipeline_end_to_end():
     )
     out = pipe.run()
     assert out["num_agents"] == N
-    assert out["responsibility_diagonal"] is True
+    # The pipeline does not supply an observed Jacobian, so the
+    # diagonal property is unverified (None), not True.
+    assert out["responsibility_diagonal"] is None
     assert isinstance(out["faithful"], bool)
 
 

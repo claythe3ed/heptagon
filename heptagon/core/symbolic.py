@@ -271,6 +271,7 @@ class MoralJacobians:
     """
     responsibility: np.ndarray
     influence: np.ndarray
+    observed_jacobian: Optional[np.ndarray] = None
 
     def __post_init__(self) -> None:
         self.responsibility = np.asarray(self.responsibility, dtype=float)
@@ -280,12 +281,31 @@ class MoralJacobians:
             raise ValueError(
                 f"influence must be ({n},{n}), got {self.influence.shape}"
             )
+        if self.observed_jacobian is not None:
+            oj = np.asarray(self.observed_jacobian, dtype=float)
+            if oj.shape != (n, n):
+                raise ValueError(
+                    f"observed_jacobian must be ({n},{n}), got {oj.shape}"
+                )
+            self.observed_jacobian = oj
 
     def full_jacobian(self) -> np.ndarray:
         return np.diag(self.responsibility)
 
-    def responsibility_is_diagonal(self, tol: float = 1e-12) -> bool:
-        J = self.full_jacobian()
+    def responsibility_is_diagonal(self, tol: float = 1e-12):
+        """
+        Verify that the *observed* responsibility Jacobian has zero
+        off-diagonal entries.
+
+        Returns
+        -------
+        True   - observed Jacobian is diagonal within tolerance
+        False  - observed Jacobian has nonzero off-diagonal
+        None   - no observation was provided; the property is unverified
+        """
+        if self.observed_jacobian is None:
+            return None
+        J = self.observed_jacobian
         off = J - np.diag(np.diag(J))
         return bool(np.linalg.norm(off) < tol)
 
