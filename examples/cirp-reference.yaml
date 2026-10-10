@@ -1,0 +1,123 @@
+name: reference_cirp
+version: "1.0"
+
+teams:
+  - role: response
+    members:
+      - IR lead
+      - SOC analyst 1
+      - SOC analyst 2
+      - forensics eng
+    contact: "+1-555-0101"
+    backup: "+1-555-0102"
+    mandate: "Fix the breach, rebuild systems, execute recovery."
+
+  - role: cyber_mgmt
+    members:
+      - CISO
+      - deputy CISO
+      - legal counsel
+    contact: "+1-555-0201"
+    backup: "+1-555-0202"
+    mandate: "Supervise all cyber incidents, coordinate response."
+
+  - role: crisis_mgmt
+    members:
+      - CEO
+      - COO
+      - PR lead
+      - general counsel
+    contact: "+1-555-0301"
+    backup: "+1-555-0302"
+    mandate: "Handle business fallout, reputation, continuity."
+
+  - role: product_owner
+    members:
+      - head of infrastructure
+      - head of applications
+    contact: "+1-555-0401"
+    backup: "+1-555-0402"
+    mandate: "Report impact on their systems and departments."
+
+  - role: third_party
+    members:
+      - forensics firm
+      - external counsel
+      - PR agency
+    contact: "+1-555-0501"
+    backup: "+1-555-0502"
+    mandate: "Provide specialist help when engaged."
+
+stakeholders:
+  - name: Data Protection Authority
+    kind: external
+    category: regulator
+    contact: "dpa-notify@example.gov"
+    need_to_know:
+      - data_breach
+      - ransomware
+
+  - name: Primary Bank
+    kind: external
+    category: customer
+    contact: "bank-notify@example.com"
+    need_to_know:
+      - data_breach
+
+  - name: All Employees
+    kind: internal
+    category: employee
+    contact: "intranet-announcements"
+    need_to_know:
+      - ransomware
+      - phishing_compromise
+      - data_breach
+
+reporting_chain:
+  - [response, cyber_mgmt]
+  - [product_owner, cyber_mgmt]
+  - [cyber_mgmt, crisis_mgmt]
+  - [third_party, cyber_mgmt]
+
+scenarios:
+  - name: data_breach
+    triggers:
+      - "DLP alert"
+      - "abnormal egress"
+      - "credential dump on dark web"
+    escalation: [response, cyber_mgmt, crisis_mgmt]
+    key_considerations:
+      - "scope of data"
+      - "notification windows"
+      - "regulator contact"
+    training_simulations:
+      - "tabletop with PR + legal"
+      - "mock GDPR notice"
+
+  - name: ransomware
+    triggers:
+      - "mass file rename"
+      - "shadow copy deletion"
+      - "ransom note"
+    escalation: [response, cyber_mgmt, crisis_mgmt]
+    key_considerations:
+      - "backup integrity"
+      - "do not negotiate"
+      - "isolate segments"
+    training_simulations:
+      - "restore-from-backup drill"
+      - "comms dark-site test"
+
+  - name: phishing_compromise
+    triggers:
+      - "user report"
+      - "OAuth anomaly"
+      - "mailbox rule created"
+    escalation: [response, cyber_mgmt]
+    key_considerations:
+      - "credential reset"
+      - "MFA enforcement"
+      - "lateral movement"
+    training_simulations:
+      - "phishing simulation"
+      - "credential reset drill"
