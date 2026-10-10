@@ -209,3 +209,79 @@ def test_tabletop_arrival_rounds_is_bfs_depth():
     assert arr["response"] == 0
     assert arr["cyber_mgmt"] == 1
     assert arr["crisis_mgmt"] == 2
+
+
+
+# ---------------------------------------------------------------------------
+# Session 5: evidence completeness — chronology + dedup
+# ---------------------------------------------------------------------------
+
+def test_evidence_completeness_passes_with_valid_timeline():
+    """Decision after evidence → no chronology violation."""
+    c = _make_complete_cirp()
+    ev = Evidence.from_bytes("soc", "analyst", b"x", "d")
+    c.log_evidence(ev)
+    d = Decision.new("cyber_mgmt", "isolate", [ev.evidence_id])
+    c.log_decision(d)
+    result = c.check_evidence_completeness()
+    assert result["ok"] is True
+    assert result["chronology_violations"] == []
+
+
+def test_evidence_completeness_detects_duplicate_hash():
+    """Two evidence items with the same bytes must be flagged."""
+    c = _make_complete_cirp()
+    ev1 = Evidence.from_bytes("soc", "analyst", b"same-bytes", "first")
+    ev2 = Evidence.from_bytes("edr", "engineer", b"same-bytes", "second")
+    c.log_evidence(ev1)
+    c.log_evidence(ev2)
+    result = c.check_evidence_completeness()
+    assert result["ok"] is False
+    assert ev1.sha256 in result["duplicate_hashes"]
+
+
+def test_evidence_completeness_detects_chronology_violation():
+    """A decision referencing future evidence must be flagged."""
+    import time
+    from datetime import timedelta
+
+    c = _make_complete_cirp()
+    ev = Evidence.from_bytes("soc", "analyst", b"x", "d")
+    c.log_evidence(ev)
+    d = Decision.new("cyber_mgmt", "isolate", [ev.evidence_id])
+    # Force the decision to appear BEFORE the evidence
+    d.timestamp = ev.timestamp - timedelta(seconds=10)
+    c.log_decision(d)
+    result = c.check_evidence_completeness()
+    assert result["ok"] is False
+    assert (d.decision_id, ev.evidence_id) in result["chronology_violations"]
+
+
+def test_evidence_completeness_detects_dangling_reference():
+    """A decision referencing a non-existent evidence ID is a violation."""
+    c = _make_complete_cirp()
+    d = Decision.new("cyber_mgmt", "isolate", ["fake-evidence-id"])
+    c.log_decision(d)
+    result = c.check_evidence_completeness()
+    assert result["ok"] is False
+    assert (d.decision_id, "fake-evidence-id") in result["dangling_references"]
+
+
+def test_evidence_completeness_scales_linearly():
+    """
+    Smoke test: 500 evidence items, no duplicates, run in < 1 second.
+    Old O(n^2) implementation would be ~250k comparisons; new one ~500.
+    """
+    import time
+
+    c = _make_complete_cirp()
+    for i in range(500):
+        ev = Evidence.from_bytes("soc", "analyst", f"data-{i}".encode(), f"item-{i}")
+        c.log_evidence(ev)
+
+    t0 = time.time()
+    result = c.check_evidence_completeness()
+    elapsed = time.time() - t0
+
+    assert result["ok"] is True
+    assert elapsed < 1.0, f"took {elapsed:.3f}s for 500 items"

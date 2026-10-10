@@ -250,29 +250,50 @@ class CIRPModel:
 
     def check_evidence_completeness(self) -> Dict:
         """
-        Every decision must reference at least one piece of evidence,
-        and every evidence hash must be unique.
+        Verify:
+          1. No two evidence items share a SHA-256 hash
+          2. Every decision references at least one evidence record
+          3. Every evidence reference points to an existing record
+          4. Every decision timestamp is at or after all referenced
+             evidence timestamps (chronology is not violated)
         """
-        hashes = [e.sha256 for e in self.evidence_log]
-        dup_hashes = [h for h in hashes if hashes.count(h) > 1]
+        # 1. Duplicate hashes — O(n) with a counter
+        hash_counts: Dict[str, int] = {}
+        for e in self.evidence_log:
+            hash_counts[e.sha256] = hash_counts.get(e.sha256, 0) + 1
+        dup_hashes = sorted(h for h, c in hash_counts.items() if c > 1)
 
-        dangling = []
-        known = {e.evidence_id for e in self.evidence_log}
+        # Build evidence index once
+        evidence_by_id = {e.evidence_id: e for e in self.evidence_log}
+
+        # 2/3/4. Walk decisions once
+        dangling: List[Tuple[str, str]] = []
+        decisions_without_evidence: List[str] = []
+        chronology_violations: List[Tuple[str, str]] = []
         for d in self.decisions_log:
+            if not d.evidence_refs:
+                decisions_without_evidence.append(d.decision_id)
+                continue
             for ref in d.evidence_refs:
-                if ref not in known:
+                ev = evidence_by_id.get(ref)
+                if ev is None:
                     dangling.append((d.decision_id, ref))
+                    continue
+                if d.timestamp < ev.timestamp:
+                    chronology_violations.append((d.decision_id, ref))
 
-        decisions_without_evidence = [
-            d.decision_id for d in self.decisions_log
-            if not d.evidence_refs
-        ]
-
+        ok = not (
+            dup_hashes
+            or dangling
+            or decisions_without_evidence
+            or chronology_violations
+        )
         return {
-            "ok": not (dup_hashes or dangling or decisions_without_evidence),
+            "ok": ok,
             "duplicate_hashes": dup_hashes,
             "dangling_references": dangling,
             "decisions_without_evidence": decisions_without_evidence,
+            "chronology_violations": chronology_violations,
         }
 
     def check_no_hidden_thing(self) -> Dict:
