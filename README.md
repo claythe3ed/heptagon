@@ -176,7 +176,7 @@ An incident record lives in the fiber bundle `E = B × F5 × F6 × F7`.
 A record that omits any coordinate is **partial**. A partial record is
 not a truthful record.
 
-See [`docs/PHILOSOPHY.md`](docs/PHILOSOPHY.md) for the full derivation.
+See [`docs/philosophy.md`](docs/philosophy.md) for the full derivation.
 
 ---
 
@@ -384,7 +384,7 @@ heptagon/
     └── stuxnet_test.py       historical validation
 ```
 
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full
+See [`docs/architecture.md`](docs/architecture.md) for the full
 module map, data flow, and gate definitions.
 
 ---
@@ -457,7 +457,7 @@ CLI. If the wheel is broken, CI fails before any release.
 - Real-time detection — Heptagon reads logs after the fact
 - Threat intelligence — Heptagon does not track adversaries
 
-Full threat model: [`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
+Full threat model: [`docs/threat-model.md`](docs/threat-model.md).
 
 ---
 
