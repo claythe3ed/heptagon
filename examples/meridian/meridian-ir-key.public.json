@@ -1,0 +1,6 @@
+{
+  "algorithm": "ed25519",
+  "public_key_hex": "d241c3dbfd129d44fda49621866d60dcba80fe1d5bc90ecd9733a7acc446d147",
+  "created_utc": "2026-10-10T21:33:13.614546+00:00",
+  "note": "Public key only. The private key is not distributed."
+}

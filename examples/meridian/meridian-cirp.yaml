@@ -1,0 +1,116 @@
+name: meridian_health_cirp
+version: "1.0"
+
+teams:
+  - role: response
+    members:
+      - "Marcus Chen (IR lead)"
+      - "Priya Raman (SOC analyst)"
+      - "Sam Okafor (forensics)"
+      - "Elena Vasquez (systems)"
+    contact: "+1-555-0140"
+    backup: "+1-555-0141"
+    mandate: "Contain, isolate, eradicate ransomware, restore systems."
+
+  - role: cyber_mgmt
+    members:
+      - "Karen D'Souza (CISO)"
+      - "Anil Patel (deputy CISO)"
+      - "Rebecca Lin (legal counsel)"
+    contact: "+1-555-0240"
+    backup: "+1-555-0241"
+    mandate: "Authorize containment, coordinate IR, manage HIPAA decisions."
+
+  - role: crisis_mgmt
+    members:
+      - "Dr. Amira Hassan (CEO)"
+      - "James Whitfield (COO)"
+      - "Nina Kovacs (PR)"
+      - "Grace Okonkwo (general counsel)"
+    contact: "+1-555-0340"
+    backup: "+1-555-0341"
+    mandate: "Business continuity, public statements, regulator engagement."
+
+  - role: product_owner
+    members:
+      - "David Marsh (EHR systems)"
+      - "Sofia Reyes (imaging)"
+      - "Tomas Novotny (clinical apps)"
+    contact: "+1-555-0440"
+    backup: "+1-555-0441"
+    mandate: "Report clinical system impact, coordinate downtime procedures."
+
+  - role: third_party
+    members:
+      - "Mandiant (forensics)"
+      - "BakerHostetler (HIPAA counsel)"
+      - "Edelman (crisis PR)"
+    contact: "+1-555-0540"
+    backup: "+1-555-0541"
+    mandate: "Provide specialist support as engaged by cyber management."
+
+stakeholders:
+  - name: HHS Office for Civil Rights
+    kind: external
+    category: regulator
+    contact: "OCRComplaint@hhs.gov"
+    need_to_know:
+      - ransomware
+      - data_breach
+
+  - name: CMS
+    kind: external
+    category: regulator
+    contact: "cms-notify@cms.hhs.gov"
+    need_to_know:
+      - ransomware
+
+  - name: Affected Patients
+    kind: external
+    category: customer
+    contact: "patient-portal-announcement"
+    need_to_know:
+      - data_breach
+
+  - name: All Clinical Staff
+    kind: internal
+    category: employee
+    contact: "hospital-intranet"
+    need_to_know:
+      - ransomware
+      - phishing_compromise
+
+reporting_chain:
+  - [response, cyber_mgmt]
+  - [product_owner, cyber_mgmt]
+  - [cyber_mgmt, crisis_mgmt]
+  - [crisis_mgmt, third_party]
+
+scenarios:
+  - name: ransomware
+    triggers:
+      - "mass file rename on file server"
+      - "shadow copy deletion"
+      - "ransom note discovered"
+    escalation: [response, cyber_mgmt, crisis_mgmt, third_party]
+    key_considerations:
+      - "patient safety - clinical systems impact"
+      - "backup integrity before restore"
+      - "HIPAA 60-day breach notification clock"
+      - "do not negotiate; preserve evidence"
+    training_simulations:
+      - "restore-from-backup drill"
+      - "regulator notification tabletop"
+
+  - name: data_breach
+    triggers:
+      - "DLP alert"
+      - "patient records exported externally"
+      - "credential dump on dark web"
+    escalation: [response, cyber_mgmt, crisis_mgmt]
+    key_considerations:
+      - "PHI scope assessment"
+      - "60-day HIPAA notification"
+      - "state attorney general notification"
+    training_simulations:
+      - "mock OCR notification"
