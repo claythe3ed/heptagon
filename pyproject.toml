@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "heptagon7"
-version = "1.0.0"
+version = "1.0.1"
 description = "Seven coordinates. Every incident. Verified."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -34,6 +34,9 @@ Repository = "https://github.com/claythe3ed/heptagon"
 
 [tool.setuptools.packages.find]
 include = ["heptagon*"]
+
+[tool.setuptools.package-data]
+"heptagon.schemas" = ["*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

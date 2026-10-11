@@ -42,13 +42,14 @@ from heptagon.cirp.yaml_loader import load_cirp_from_yaml
 # ---------------------------------------------------------------------------
 
 def cmd_declare(args: argparse.Namespace) -> int:
+    plan_path = Path(args.path)
+    if not plan_path.exists():
+        print(f"ERROR: plan file not found: {args.path}", file=sys.stderr)
+        return 2
     try:
         cirp = load_cirp_from_yaml(args.path)
-    except FileNotFoundError:
-        print(f"ERROR: file not found: {args.path}", file=sys.stderr)
-        return 2
     except Exception as e:
-        print(f"ERROR: {e}", file=sys.stderr)
+        print(f"ERROR: {type(e).__name__}: {e}", file=sys.stderr)
         return 2
 
     summary = {
@@ -83,13 +84,14 @@ def cmd_declare(args: argparse.Namespace) -> int:
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
+    plan_path = Path(args.path)
+    if not plan_path.exists():
+        print(f"ERROR: plan file not found: {args.path}", file=sys.stderr)
+        return 2
     try:
         cirp = load_cirp_from_yaml(args.path)
-    except FileNotFoundError:
-        print(f"ERROR: file not found: {args.path}", file=sys.stderr)
-        return 2
     except Exception as e:
-        print(f"ERROR: {e}", file=sys.stderr)
+        print(f"ERROR: {type(e).__name__}: {e}", file=sys.stderr)
         return 2
 
     report = cirp.verify_all()
@@ -114,13 +116,14 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
 
 def cmd_simulate(args: argparse.Namespace) -> int:
+    plan_path = Path(args.plan)
+    if not plan_path.exists():
+        print(f"ERROR: plan file not found: {args.plan}", file=sys.stderr)
+        return 2
     try:
         cirp = load_cirp_from_yaml(args.plan)
-    except FileNotFoundError:
-        print(f"ERROR: file not found: {args.plan}", file=sys.stderr)
-        return 2
     except Exception as e:
-        print(f"ERROR: {e}", file=sys.stderr)
+        print(f"ERROR: {type(e).__name__}: {e}", file=sys.stderr)
         return 2
 
     try:
