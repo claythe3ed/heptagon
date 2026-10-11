@@ -1,10 +1,11 @@
-# Heptagon
+k# Heptagon
 
+![CI](https://github.com/claythe3ed/heptagon/actions/workflows/ci.yml/badge.svg)
 ![PyPI version](https://img.shields.io/pypi/v/heptagon7)
 ![Python versions](https://img.shields.io/pypi/pyversions/heptagon7)
 ![License](https://img.shields.io/github/license/claythe3ed/heptagon)
-![Status](https://img.shields.io/badge/status-v1.0.0-brightgreen)
-![Tests](https://img.shields.io/badge/tests-102%20passing-brightgreen)
+![Status](https://img.shields.io/badge/status-v1.0.1-brightgreen)
+![Tests](https://img.shields.io/badge/tests-109%20passing-brightgreen)
 ![Dependencies](https://img.shields.io/badge/deps-numpy%20%7C%20PyYAML%20%7C%20jsonschema%20%7C%20PyNaCl-blue)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)
 
@@ -327,7 +328,7 @@ rewrite a log once written, only append to it.
 ## Plan Declaration Format
 
 CIRPs are declared in YAML and validated against
-[`schemas/cirp.schema.json`](schemas/cirp.schema.json).
+[`heptagon/schemas/cirp.schema.json`](heptagon/schemas/cirp.schema.json).
 
 ```yaml
 name: reference_cirp
@@ -372,6 +373,8 @@ heptagon/
 ├── cirp/
 │   ├── model.py             CIRP primitives + six gates
 │   └── yaml_loader.py       plan loading + schema validation
+├── schemas/
+│   └── cirp.schema.json     JSON Schema (Draft 2020-12)
 ├── audit/
 │   ├── signing.py           Ed25519 signing
 │   └── log.py               JSONL incident-log reader/writer
@@ -400,11 +403,17 @@ pytest tests/ -v
 | `test_log_and_audit.py` | 11 | JSONL round-trip, CLI audit behavior |
 | `test_cli.py` | 10 | CLI commands, exit codes, JSON output |
 | `test_yaml_loader.py` | 9 | Schema validation, round-trip compilation |
+| `test_schema_shipping.py` | 7 | Schema ships inside the wheel (v1.0.1 fix) |
 | `test_simulation.py` | 7 | Deterministic agent simulator |
-| **Total** | **102** | |
+| **Total** | **109** | |
 
 Every gate has at least one test that proves it can **fail**, not just
 pass. A check that cannot fail is not a check.
+
+The CI workflow (`.github/workflows/ci.yml`) runs the full suite on
+Python 3.11 and 3.12, then builds the wheel, verifies the JSON
+schema ships inside it, installs it in a fresh venv, and runs the
+CLI. If the wheel is broken, CI fails before any release.
 
 ---
 
