@@ -1,0 +1,40 @@
+/* LUNA palette for Heptagon */
+/* Cyan-blue monochromatic gradient: #011C40 (deepest) -> #A7EBF2 (brightest) */
+
+[data-md-color-scheme="default"] {
+  --md-primary-fg-color:        #023859;
+  --md-primary-fg-color--light: #26658C;
+  --md-primary-fg-color--dark:  #011C40;
+  --md-accent-fg-color:         #26658C;
+  --md-typeset-a-color:         #26658C;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color:        #023859;
+  --md-primary-fg-color--light: #26658C;
+  --md-primary-fg-color--dark:  #011C40;
+  --md-accent-fg-color:         #54ACBF;
+  --md-typeset-a-color:         #54ACBF;
+}
+
+.md-header {
+  background: linear-gradient(180deg, #023859 0%, #011C40 100%);
+}
+
+.md-tabs {
+  background: #011C40;
+}
+
+[data-md-color-scheme="slate"] .md-typeset a {
+  color: #54ACBF;
+}
+
+[data-md-color-scheme="slate"] .md-typeset a:hover {
+  color: #A7EBF2;
+}
+
+[data-md-color-scheme="slate"] .md-nav__link--active,
+[data-md-color-scheme="slate"] .md-nav__link:focus,
+[data-md-color-scheme="slate"] .md-nav__link:hover {
+  color: #A7EBF2;
+}

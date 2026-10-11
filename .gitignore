@@ -12,3 +12,6 @@ htmlcov/
 *.bak
 *.zip
 _staging/
+
+# MkDocs generated output
+site/
