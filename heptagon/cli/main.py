@@ -253,11 +253,67 @@ def cmd_audit(args: argparse.Namespace) -> int:
         if missing:
             incomplete_7d.append((d.decision_id, missing))
 
+    # --- Merkle seal verification (if a .root companion exists) ---
+    seal_status = "not_present"
+    seal_detail = {}
+    seal_path = Path(str(args.path) + ".root")
+    if seal_path.exists():
+        from heptagon.audit.merkle import (
+            compute_root,
+            load_seal,
+            MerkleSeal,
+            ALGORITHM_NAME,
+        )
+
+        try:
+            seal = load_seal(seal_path)
+            raw_lines = [
+                l for l in Path(args.path).read_text(
+                    encoding="utf-8"
+                ).splitlines() if l.strip()
+            ]
+            current_root = compute_root(raw_lines)
+            root_ok = (current_root == seal.merkle_root)
+            count_ok = (len(raw_lines) == seal.record_count)
+
+            seal_detail = {
+                "algorithm": seal.algorithm,
+                "expected_root": seal.merkle_root,
+                "computed_root": current_root,
+                "expected_count": seal.record_count,
+                "actual_count": len(raw_lines),
+                "root_match": root_ok,
+                "count_match": count_ok,
+                "signed": bool(seal.signature),
+            }
+
+            # Verify the optional Ed25519 signature on the seal
+            if seal.signature:
+                from heptagon.audit.signing import Signer
+                try:
+                    pk = bytes.fromhex(seal.signer_public_key)
+                    sig = bytes.fromhex(seal.signature)
+                    payload = seal.canonical_bytes()
+                    seal_detail["signature_valid"] = Signer.verify(
+                        pk, payload, sig
+                    )
+                except Exception:
+                    seal_detail["signature_valid"] = False
+
+            if root_ok and count_ok:
+                seal_status = "verified"
+            else:
+                seal_status = "mismatch"
+        except Exception as e:
+            seal_status = "error"
+            seal_detail = {"error": f"{type(e).__name__}: {e}"}
+
     ok = (
         not invalid_sigs
         and not unsigned
         and not dangling
         and not incomplete_7d
+        and seal_status != "mismatch"
     )
 
     summary = {
@@ -272,6 +328,11 @@ def cmd_audit(args: argparse.Namespace) -> int:
         },
         "dangling_evidence_refs": dangling,
         "incomplete_7d": incomplete_7d,
+        "seal": {
+            "status": seal_status,
+            "path": str(seal_path),
+            "detail": seal_detail,
+        },
         "ok": ok,
     }
 
@@ -305,10 +366,107 @@ def cmd_audit(args: argparse.Namespace) -> int:
             print(f"Incomplete 7D records ({len(incomplete_7d)}):")
             for did, missing in incomplete_7d:
                 print(f"  - {did}: missing {', '.join(missing)}")
+        # Seal status line
+        if seal_status == "verified":
+            print()
+            print(f"Seal:      VERIFIED "
+                  f"({seal_detail.get('algorithm', '?')})")
+            if seal_detail.get("signed"):
+                sig_ok = seal_detail.get("signature_valid", False)
+                print(f"Seal sig:  {'valid' if sig_ok else 'INVALID'}")
+        elif seal_status == "mismatch":
+            print()
+            print(f"Seal:      MISMATCH")
+            print(f"  expected root: "
+                  f"{seal_detail.get('expected_root', '')[:16]}...")
+            print(f"  computed root: "
+                  f"{seal_detail.get('computed_root', '')[:16]}...")
+            print(f"  expected count: {seal_detail.get('expected_count')}")
+            print(f"  actual count:   {seal_detail.get('actual_count')}")
+        elif seal_status == "error":
+            print()
+            print(f"Seal:      ERROR — {seal_detail.get('error')}")
+        # "not_present": silently skip (no seal is a valid state)
+
         print()
         print(f"OK: {ok}")
 
     return 0 if ok else 1
+
+
+def cmd_seal(args: argparse.Namespace) -> int:
+    """
+    Compute a Merkle root over a JSONL log and write a companion
+    .root seal file. Optionally sign the seal with an Ed25519 key.
+    """
+    from heptagon.audit.merkle import seal_log
+
+    log_path = Path(args.log)
+    if not log_path.exists():
+        print(f"ERROR: log file not found: {args.log}", file=sys.stderr)
+        return 2
+
+    signer = None
+    if args.sign_with:
+        try:
+            from heptagon.audit.signing import Signer
+            signer = Signer.load(args.sign_with)
+        except FileNotFoundError:
+            print(f"ERROR: key file not found: {args.sign_with}",
+                  file=sys.stderr)
+            return 2
+        except Exception as e:
+            print(f"ERROR: could not load key: {type(e).__name__}: {e}",
+                  file=sys.stderr)
+            return 2
+
+    try:
+        seal = seal_log(log_path, out_path=args.out, signer=signer)
+    except Exception as e:
+        print(f"ERROR: {type(e).__name__}: {e}", file=sys.stderr)
+        return 2
+
+    out_path = Path(args.out) if args.out else log_path.with_suffix(
+        log_path.suffix + ".root"
+    )
+
+    if args.json:
+        print(json.dumps(seal.to_dict(), indent=2))
+    else:
+        print(f"Seal written to: {out_path}")
+        print(f"Log:             {seal.log_file}")
+        print(f"Records sealed:  {seal.record_count}")
+        print(f"Merkle root:     {seal.merkle_root[:16]}...")
+        if seal.signature:
+            print(f"Signature:       ed25519 ({len(seal.signature)//2} bytes)")
+
+    # Custody note — always printed to stderr, so --json output
+    # on stdout stays machine-readable.
+    if not args.no_note:
+        print("", file=sys.stderr)
+        print("CUSTODY NOTE", file=sys.stderr)
+        print("  The seal was written next to the log file. If an attacker",
+              file=sys.stderr)
+        print("  can delete or modify the log, they can delete or modify the",
+              file=sys.stderr)
+        print("  seal too. On its own, this seal detects accidental",
+              file=sys.stderr)
+        print("  corruption, not a determined attacker.", file=sys.stderr)
+        print("", file=sys.stderr)
+        print("  For deletion and reordering detection to hold, copy the",
+              file=sys.stderr)
+        print("  .root file somewhere outside this machine:", file=sys.stderr)
+        print("    - A separate Git repository", file=sys.stderr)
+        print("    - A timestamping service (OpenTimestamps or similar)",
+              file=sys.stderr)
+        print("    - Write-once storage (WORM filesystem)", file=sys.stderr)
+        print("    - An email sent to an independent address",
+              file=sys.stderr)
+        print("", file=sys.stderr)
+        print("  See docs/threat-model.md for the full boundary.",
+              file=sys.stderr)
+
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -357,6 +515,23 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--json", action="store_true",
                    help="machine-readable output")
     p.set_defaults(func=cmd_audit)
+
+    # seal
+    p = sub.add_parser(
+        "seal",
+        help="compute a Merkle root over a log and write a .root seal",
+    )
+    p.add_argument("log", type=Path, help="path to incidents.jsonl")
+    p.add_argument("--out", type=Path, default=None,
+                   help="destination for the .root file "
+                        "(default: <log>.root)")
+    p.add_argument("--sign-with", type=str, default=None,
+                   help="Ed25519 key file to sign the seal (optional)")
+    p.add_argument("--no-note", action="store_true",
+                   help="suppress the custody note printed to stderr")
+    p.add_argument("--json", action="store_true",
+                   help="machine-readable output")
+    p.set_defaults(func=cmd_seal)
 
     # keygen
     p = sub.add_parser(
