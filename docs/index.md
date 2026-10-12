@@ -20,8 +20,10 @@ The framework makes three claims falsifiable:
    scenario must be reachable through the reporting chain.
 2. **A complete record populates all seven coordinates.** No silent
    omissions.
-3. **A signed record cannot be silently modified.** Ed25519 signature
-   verification rejects any post-hoc change.
+3. **A signed record cannot be silently modified, deleted, reordered,
+   or truncated.** Ed25519 signatures catch modification of individual
+   records. A Merkle seal over the log catches deletion, reordering,
+   and truncation — the shape of the file itself.
 
 Each claim is enforced by a specific compliance gate. Each gate can
 fail. Each failure names the specific record and the specific
@@ -56,6 +58,9 @@ After installation, both the Python import and the CLI command are
     # Audit an incident log for tampering
     heptagon audit incidents.jsonl
 
+    # Seal the log with a Merkle root (v1.1.0)
+    heptagon seal incidents.jsonl
+
 ---
 
 ## The six compliance gates
@@ -71,11 +76,32 @@ After installation, both the Python import and the CLI command are
 
 ---
 
+## What the framework detects
+
+| Attack | Detected by |
+|---|---|
+| Modify a signed record | Ed25519 signature verification |
+| Delete a record from a log | Merkle root mismatch |
+| Reorder records in a log | Merkle root mismatch |
+| Truncate a log at any point | Merkle root mismatch |
+
+The Merkle seal only provides deletion, reordering, and truncation
+detection when the root is anchored somewhere the attacker cannot
+reach. A seal stored next to the log is a convenience for detecting
+accidental corruption, not a security control. `heptagon seal` prints
+this note on every run.
+
+See [Threat Model](threat-model.md) for the full boundary.
+
+---
+
 ## Where to go next
 
 - [Install](getting-started/install.md) — get Heptagon running
 - [Quick Start](getting-started/quick-start.md) — first plan, first audit
 - [Philosophy](philosophy.md) — the seven-coordinate schema
 - [Architecture](architecture.md) — modules and data flow
-- [CLI Reference](cli.md) — all five commands
+- [Threat Model](threat-model.md) — what it protects against, and what it doesn't
+- [CLI Reference](cli.md) — all six commands
+- [API Reference](api.md) — Python API
 - [Showcase](showcase.md) — a real ransomware scenario
