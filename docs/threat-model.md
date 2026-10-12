@@ -93,10 +93,11 @@ Heptagon is designed around this principle:
 - **Signed records** protect against modification *of the record*.
   They assume the log file itself is stored where the attacker
   cannot rewrite it wholesale.
-- **Merkle root anchoring**, planned for v1.1, will protect against
-  deletion and reordering of records *within a log file*. It will
-  only provide this protection if the root is anchored somewhere
-  the attacker does not control. Options include:
+- **Merkle root anchoring**, implemented in v1.1.0 as the
+  `heptagon seal` command, protects against deletion and reordering
+  of records *within a log file*. It only provides this protection
+  if the root is anchored somewhere the attacker does not control.
+  Options include:
   - A separate Git repository
   - A timestamping service (OpenTimestamps or similar)
   - A write-once storage medium (WORM filesystem)
@@ -104,6 +105,8 @@ Heptagon is designed around this principle:
 
   If the root is stored next to the log file, it is a convenience
   for detecting accidental corruption, not a security control.
+  The `heptagon seal` command prints this exact note to stderr
+  every time it runs, so no user confuses the two cases.
 
 - **Log file custody** — ensuring the storage location itself is
   append-only or otherwise tamper-resistant — is the operator's
@@ -140,7 +143,8 @@ Any of the following would require a new version of this threat
 model, with the corresponding code changes, tests, and published
 release notes:
 
-- Adding Merkle root anchoring (planned v1.1)
+- Adding Merkle root anchoring (released in v1.1.0, documented
+  above)
 - Adding encrypted signing keys (would close the "compromised key"
   gap for lost-or-stolen files, but not for a live compromised
   process)
