@@ -58,23 +58,31 @@ Run the full test suite:
 
     pytest tests/ -v
 
-Expected output: **109 passed**.
+Expected output: **124 passed**.
 
 ---
 
 ## What CI checks
 
-Every push runs the workflow in `.github/workflows/ci.yml`:
+Every push runs three workflows:
 
-1. **test** — runs `pytest` on Python 3.11 and 3.12.
-2. **wheel-smoke-test** — builds the wheel, verifies the JSON
-   Schema ships inside it, installs the wheel in a fresh venv, and
-   runs `heptagon declare` / `verify` / `simulate` from that
-   install.
+1. **CI** (`.github/workflows/ci.yml`) — two jobs:
+   - `test` runs `pytest` on Python 3.11 and 3.12
+   - `wheel-smoke-test` builds the wheel, verifies the JSON Schema
+     ships inside it, installs the wheel in a fresh venv, and runs
+     `heptagon declare` / `verify` / `simulate` from that install
 
-The second job is the important one. It reproduces the exact
-condition that shipped a broken v1.0.0 to PyPI. If the wheel is
-missing any file, CI fails before anything is published.
+   The second job is the important one. It reproduces the exact
+   condition that shipped a broken v1.0.0 to PyPI. If the wheel is
+   missing any file, CI fails before anything is published.
+
+2. **docs** (`.github/workflows/docs.yml`) — builds the MkDocs site
+   and deploys to GitHub Pages.
+
+3. **publish** (`.github/workflows/publish.yml`) — triggers on `v*`
+   tags. Publishes to PyPI via Trusted Publishing (OIDC). No API
+   token. Only runs from `claythe3ed/heptagon` at `publish.yml` in
+   the `pypi` environment.
 
 ---
 

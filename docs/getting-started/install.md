@@ -15,7 +15,7 @@
 ## Verify the install
 
     heptagon --version
-    # heptagon 1.0.1
+    # heptagon 1.1.0
 
     heptagon --help
     # usage: heptagon [-h] [--version] {declare,verify,audit,keygen,simulate}

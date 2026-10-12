@@ -159,6 +159,58 @@ indices raise `ValueError`.
 
 ---
 
+## Merkle seal
+
+### `heptagon.audit.merkle`
+
+Introduced in v1.1.0. Detects deletion, reordering, and truncation
+of records within a JSONL log — attack classes that per-record
+Ed25519 signatures alone cannot catch.
+
+    from heptagon.audit.merkle import (
+        compute_root,
+        verify_root,
+        seal_log,
+        load_seal,
+        MerkleSeal,
+        ALGORITHM_NAME,   # "sha256-merkle"
+    )
+
+| Function | Purpose |
+|---|---|
+| `compute_root(lines)` | SHA-256 Merkle root over a list of record strings or bytes |
+| `verify_root(lines, expected_hex)` | Recompute and compare |
+| `seal_log(log_path, out_path=None, signer=None)` | Write a companion `.root` file |
+| `load_seal(path)` | Read a `.root` file back as a `MerkleSeal` |
+
+**The seal detects:**
+
+| Attack | Detected |
+|---|---|
+| Delete a record from the log | Yes |
+| Reorder records | Yes |
+| Truncate the log | Yes |
+| Modify one character in a record | Yes |
+
+**It does not detect** an attacker who deletes both the log and the
+seal file from the same machine. That is a custody problem, not a
+cryptographic one. See `docs/threat-model.md` for the full boundary.
+
+### `MerkleSeal` dataclass
+
+    seal = seal_log("incidents.jsonl", signer=signer)
+    # seal.merkle_root      — hex string (64 chars)
+    # seal.record_count     — number of records sealed
+    # seal.algorithm        — "sha256-merkle"
+    # seal.signature        — optional Ed25519 signature over the seal
+    # seal.signer_public_key
+
+Signing the seal with a different key than the log is recommended.
+If the same key signs both, compromise of that key compromises both
+layers at once.
+
+---
+
 ## YAML plan loading
 
     from heptagon.cirp.yaml_loader import (
@@ -209,3 +261,9 @@ The schema is loaded via `importlib.resources` from
     log.append_decision(d)
 
     save_log(log, "demo.jsonl")
+
+    # Seal the log with a Merkle root (v1.1.0)
+    from heptagon.audit.merkle import seal_log
+    seal = seal_log("demo.jsonl")
+    print(f"Root: {seal.merkle_root[:16]}...")
+    print(f"Records: {seal.record_count}")

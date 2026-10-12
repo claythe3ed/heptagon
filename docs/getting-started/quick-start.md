@@ -128,6 +128,64 @@ Now modify one byte in `incidents.jsonl` and run the audit again.
 Heptagon reports the record ID as having an invalid signature and
 exits with code 1.
 
+## 7. Seal the log with a Merkle root
+
+Per-record signatures catch modification. They do not catch
+deletion, reordering, or truncation of the log file itself. For
+that, seal the log:
+
+    heptagon seal incidents.jsonl
+
+Output:
+
+    Seal written to: incidents.jsonl.root
+    Log:             incidents.jsonl
+    Records sealed:  1
+    Merkle root:     <16 hex chars>...
+
+    CUSTODY NOTE
+      The seal was written next to the log file. If an attacker
+      can delete or modify the log, they can delete or modify the
+      seal too. On its own, this seal detects accidental
+      corruption, not a determined attacker.
+
+      For deletion and reordering detection to hold, copy the
+      .root file somewhere outside this machine:
+        - A separate Git repository
+        - A timestamping service (OpenTimestamps or similar)
+        - Write-once storage (WORM filesystem)
+        - An email sent to an independent address
+
+      See docs/threat-model.md for the full boundary.
+
+Then re-run the audit:
+
+    heptagon audit incidents.jsonl
+
+Output now includes the seal line:
+
+    Ed25519 valid: 1
+
+    Seal:      VERIFIED (sha256-merkle)
+
+    OK: True
+
+Delete one line from `incidents.jsonl` and re-run the audit:
+
+    Seal:      MISMATCH
+      expected root: <16 hex chars>...
+      computed root: <different hex chars>...
+      expected count: 1
+      actual count:   0
+
+    OK: False
+
+The signature on the remaining record still verifies. The Merkle
+root does not. That is the difference between a signed record and a
+sealed log.
+
+---
+
 ## Where to go next
 
 - [CLI Reference](../cli.md) — every command and option

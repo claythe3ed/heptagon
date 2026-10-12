@@ -22,6 +22,7 @@
       cirp/yaml_loader.py         plan loader + schema validation
       audit/signing.py            Ed25519 signer
       audit/log.py                JSONL incident-log reader/writer
+      audit/merkle.py             Merkle root + seal (v1.1.0)
       cli/main.py                 argparse-based CLI
       simulation/
         internal_simulator.py     numpy-only agent simulator
@@ -38,7 +39,13 @@
                              run_tabletop() (escalation)
                                        │
                                        ▼
-                    Incident log ──► audit (signatures + 7D)
+                    Incident log ──► audit (signatures + 7D + seal)
+                                       │
+                                       ▼
+                          heptagon seal ──► .root file
+                                       │
+                                       ▼
+                             anchor externally (custody)
 
 ## The six compliance gates
 
